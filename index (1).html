@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#080b12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Anti-Maling Mobile</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:#070a11;color:#f4f7ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{padding-bottom:env(safe-area-inset-bottom)}
+.app{max-width:720px;margin:auto;padding:14px 12px 24px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+h1{font-size:22px;margin:0}.sub{font-size:12px;color:#9aa7c2;margin:3px 0 0}
+.badge{font-size:11px;font-weight:800;padding:7px 9px;border-radius:999px;background:#172033;color:#aab7d2}
+.viewer{position:relative;background:#000;border-radius:20px;overflow:hidden;aspect-ratio:9/16;max-height:72vh;border:1px solid #273149;box-shadow:0 12px 40px #0008}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+canvas{pointer-events:none}
+.top-status{position:absolute;left:10px;right:10px;top:10px;display:flex;justify-content:space-between;align-items:center;z-index:3}
+.pill{padding:8px 10px;border-radius:999px;background:#0009;backdrop-filter:blur(8px);font-size:12px;font-weight:800}
+.safe{color:#65e6a0}.warn{color:#ff7d7d}
+.tap-help{position:absolute;left:12px;right:12px;bottom:78px;text-align:center;background:#0009;padding:9px;border-radius:12px;font-size:12px;color:#dbe4f7;z-index:3}
+.alarm{position:absolute;inset:0;display:none;place-items:center;background:#e11d48aa;z-index:4;animation:flash .7s infinite}
+.alarm.show{display:grid}
+.alarm-box{text-align:center;font-weight:1000;font-size:clamp(30px,10vw,60px);text-shadow:0 3px 15px #000}
+@keyframes flash{50%{background:#e11d4860}}
+.controls{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:9px}
+button{border:0;border-radius:14px;padding:14px 10px;font-size:14px;font-weight:900;color:#fff;background:#263451}
+button.primary{background:#2563eb}.danger{background:#b91c1c}.green{background:#087f5b}
+button:active{transform:scale(.98)}
+.card{margin-top:12px;background:#111827;border:1px solid #25304a;border-radius:18px;padding:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:#0a101c;border-radius:13px;padding:11px 8px;text-align:center}
+.stat small{display:block;color:#8996b0;font-size:10px;margin-bottom:4px}.stat b{font-size:18px}
+.setting{margin-top:14px}.setting label{display:flex;justify-content:space-between;font-size:12px;color:#c6d0e5;margin-bottom:7px}
+input[type=range]{width:100%;height:34px;accent-color:#4d8dff}
+.note{font-size:11px;line-height:1.45;color:#8f9bb5;margin:10px 2px 0}
+.modal{position:fixed;inset:0;background:#000b;display:none;place-items:end center;padding:12px;z-index:20}
+.modal.show{display:grid}
+.sheet{width:min(720px,100%);background:#161d2b;border:1px solid #2c3852;border-radius:22px;padding:18px}
+.sheet h2{font-size:18px;margin:0 0 8px}.sheet p{font-size:13px;line-height:1.5;color:#b5c0d7}
+@media(min-width:600px){.viewer{aspect-ratio:16/10;max-height:none}.app{padding-top:24px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div><h1>🛡️ Anti-Maling</h1><p class="sub">Deteksi tangan yang mendekati barang</p></div>
+  <div class="badge" id="mode">SIAP</div>
+</header>
+
+<div class="viewer" id="viewer">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
+  <div class="top-status">
+    <div class="pill" id="cameraStatus">Kamera OFF</div>
+    <div class="pill safe" id="alarmStatus">● AMAN</div>
+  </div>
+  <div class="tap-help" id="tapHelp">Sentuh area barang pada kamera untuk memindahkan kotak barang</div>
+  <div class="alarm" id="alarm"><div class="alarm-box">⚠️<br>WARNING<br><span style="font-size:.52em">TANGAN TERLALU DEKAT</span></div></div>
+</div>
+
+<div class="controls">
+  <button class="primary" id="start">📷 Aktifkan Kamera</button>
+  <button class="danger" id="stop">⏹ Matikan</button>
+  <button class="green" id="sound">🔊 Tes Alarm</button>
+  <button id="reset">🎯 Reset Barang</button>
+</div>
+
+<div class="card">
+  <div class="stats">
+    <div class="stat"><small>STATUS</small><b id="statusText" class="safe">AMAN</b></div>
+    <div class="stat"><small>JARAK</small><b id="distance">—</b></div>
+    <div class="stat"><small>TANGAN</small><b id="hands">0</b></div>
+  </div>
+
+  <div class="setting">
+    <label><span>Ukuran area barang</span><b id="sizeText">30%</b></label>
+    <input id="size" type="range" min="10" max="65" value="30">
+  </div>
+  <div class="setting">
+    <label><span>Jarak warning</span><b id="thresholdText">15%</b></label>
+    <input id="threshold" type="range" min="3" max="45" value="15">
+  </div>
+  <p class="note">Jarak adalah jarak relatif dari tangan ke batas area barang. Untuk cm nyata diperlukan kalibrasi kamera.</p>
+</div>
+</div>
+
+<div class="modal" id="permission">
+  <div class="sheet">
+    <h2>📷 Izinkan kamera</h2>
+    <p>Tekan tombol kamera lalu pilih <b>Izinkan</b>. Jika kamera tetap tidak bisa dibuka, halaman harus dijalankan melalui HTTPS atau localhost, bukan langsung dari file Downloads.</p>
+    <button class="primary" style="width:100%" id="modalOk">Mengerti</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const video=$('video'), canvas=$('overlay'), ctx=canvas.getContext('2d'), viewer=$('viewer');
+let stream=null,camera=null,lastAlarm=false, audioCtx=null;
+let itemCenter={x:.5,y:.5};
+
+function labels(){
+ $('sizeText').textContent=$('size').value+'%';
+ $('thresholdText').textContent=$('threshold').value+'%';
+}
+$('size').oninput=labels;$('threshold').oninput=labels;labels();
+
+function canvasSize(){
+ canvas.width=video.videoWidth||720;canvas.height=video.videoHeight||1280;
+}
+function box(){
+ const s=+$('size').value/100,w=canvas.width*s,h=canvas.height*s;
+ return {x:itemCenter.x*canvas.width-w/2,y:itemCenter.y*canvas.height-h/2,w,h};
+}
+function distanceToBox(px,py,b){
+ const x=Math.max(b.x,Math.min(px,b.x+b.w)),y=Math.max(b.y,Math.min(py,b.y+b.h));
+ return Math.hypot(px-x,py-y);
+}
+function center(lm){
+ let x=0,y=0;for(const p of lm){x+=p.x;y+=p.y}
+ return{x:x/lm.length,y:y/lm.length};
+}
+function beep(){
+ try{
+  audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.frequency.value=900;o.type='square';g.gain.value=.05;
+  o.connect(g);g.connect(audioCtx.destination);o.start();
+  setTimeout(()=>o.stop(),180);
+ }catch(e){}
+}
+function alarm(on){
+ if(on===lastAlarm)return;
+ lastAlarm=on;$('alarm').classList.toggle('show',on);
+ $('alarmStatus').textContent=on?'● WARNING':'● AMAN';
+ $('alarmStatus').className='pill '+(on?'warn':'safe');
+ $('statusText').textContent=on?'WARNING':'AMAN';
+ $('statusText').className=on?'warn':'safe';
+ if(on){beep();if(navigator.vibrate)navigator.vibrate([250,100,250,100,350])}
+}
+
+const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.6,minTrackingConfidence:.6});
+hands.onResults(r=>{
+ canvasSize();ctx.clearRect(0,0,canvas.width,canvas.height);
+ const b=box();
+ ctx.strokeStyle='#56a8ff';ctx.lineWidth=Math.max(4,canvas.width/350);ctx.strokeRect(b.x,b.y,b.w,b.h);
+ ctx.fillStyle='#56a8ff';ctx.font=`${Math.max(16,canvas.width/55)}px system-ui`;ctx.fillText('BARANG',b.x+8,b.y+26);
+
+ let nearest=Infinity,count=0;
+ for(const lm of (r.multiHandLandmarks||[])){
+  count++;drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:'#00e676',lineWidth:4});
+  drawLandmarks(ctx,lm,{color:'#fff',radius:4});
+  const c=center(lm),px=c.x*canvas.width,py=c.y*canvas.height,d=distanceToBox(px,py,b);
+  nearest=Math.min(nearest,d);
+  ctx.beginPath();ctx.arc(px,py,11,0,Math.PI*2);ctx.fillStyle='#ffd43b';ctx.fill();
+ }
+ $('hands').textContent=count;
+ if(nearest===Infinity){$('distance').textContent='—';alarm(false)}
+ else{
+  const rel=nearest/Math.min(canvas.width,canvas.height)*100;
+  $('distance').textContent=rel.toFixed(1)+'%';
+  alarm(rel<=+$('threshold').value);
+ }
+});
+
+async function start(){
+ try{
+  if(!navigator.mediaDevices?.getUserMedia){$('permission').classList.add('show');return}
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+  video.srcObject=stream;await video.play();
+  $('cameraStatus').textContent='KAMERA ON';$('mode').textContent='AKTIF';
+  camera=new Camera(video,{onFrame:async()=>hands.send({image:video}),width:1280,height:720});camera.start();
+  $('tapHelp').style.display='block';
+ }catch(e){
+  $('permission').classList.add('show');
+ }
+}
+function stop(){
+ if(camera){camera.stop();camera=null}
+ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+ video.srcObject=null;alarm(false);$('hands').textContent='0';$('distance').textContent='—';
+ $('cameraStatus').textContent='KAMERA OFF';$('mode').textContent='SIAP';
+}
+function reset(){itemCenter={x:.5,y:.5}}
+viewer.addEventListener('click',e=>{
+ if(!video.videoWidth)return;
+ const r=viewer.getBoundingClientRect();
+ itemCenter={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};
+});
+$('start').onclick=start;$('stop').onclick=stop;$('reset').onclick=reset;
+$('sound').onclick=()=>{beep();if(navigator.vibrate)navigator.vibrate(200)};
+$('modalOk').onclick=()=>$('permission').classList.remove('show');
+window.addEventListener('beforeunload',stop);
+</script>
+</body>
+</html>
